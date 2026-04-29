@@ -215,6 +215,16 @@ def patch_ffmpeg_reader() -> Path | None:
     text = FFMPEG_READER.read_text()
     original = text
 
+    text = re.sub(
+        r"\ntry:\n[ \t]+import ffmpeg\nexcept ImportError:\n"
+        r"[ \t]+print\(_\(\"Missing ffmpeg module, please run:\"\)\)\n"
+        r"[ \t]+print\(\" pip3 install ffmpeg-python\\n\"\)\n"
+        r"[ \t]+sys\.exit\(12\)\n",
+        "\n",
+        text,
+        count=1,
+    )
+
     text = text.replace(
         "def __init__(self, device_path, device_format, numframes=10):",
         "def __init__(self, device_path, device_format, numframes=30):",
@@ -228,6 +238,72 @@ def patch_ffmpeg_reader() -> Path | None:
         "return 0, self.video[self.num_frames_read]\n",
         "return True, self.video[self.num_frames_read]\n",
     )
+
+    record_replacement = '''
+\tdef record(self, numframes):
+\t\t""" Record a video, saving it to self.video array for processing later """
+
+\t\t# Ensure we have set our width and height before we record, otherwise our numpy call will fail
+\t\tif self.get(CAP_PROP_FRAME_WIDTH) == 0 or self.get(CAP_PROP_FRAME_HEIGHT) == 0:
+\t\t\tself.probe()
+
+\t\t# Ensure num_frames_read is reset to 0
+\t\tself.num_frames_read = 0
+
+\t\targs = [
+\t\t\t"ffmpeg",
+\t\t\t"-hide_banner",
+\t\t\t"-loglevel",
+\t\t\t"error",
+\t\t\t"-f",
+\t\t\tself.device_format,
+\t\t\t"-input_format",
+\t\t\t"gray",
+\t\t\t"-video_size",
+\t\t\tstr(self.width) + "x" + str(self.height),
+\t\t\t"-i",
+\t\t\tself.device_path,
+\t\t\t"-frames:v",
+\t\t\tstr(numframes),
+\t\t\t"-f",
+\t\t\t"rawvideo",
+\t\t\t"-pix_fmt",
+\t\t\t"rgb24",
+\t\t\t"-",
+\t\t]
+\t\tprocess = Popen(args, stdout=PIPE, stderr=PIPE)
+\t\tstream, err = process.communicate()
+\t\tif process.returncode != 0:
+\t\t\tprint(_("ffmpeg failed to read camera specified in the 'device_path' config option, aborting"))
+\t\t\tif err:
+\t\t\t\tprint(err.decode("utf-8", errors="replace"))
+\t\t\tsys.exit(14)
+
+\t\tframe_size = self.width * self.height * 3
+\t\tusable_frames = len(stream) // frame_size
+\t\tif usable_frames < 1:
+\t\t\tprint(_("ffmpeg returned no usable camera frames, aborting"))
+\t\t\tsys.exit(14)
+
+\t\tusable_bytes = usable_frames * frame_size
+\t\tself.video = (
+\t\t\tnumpy
+\t\t\t.frombuffer(stream[:usable_bytes], numpy.uint8)
+\t\t\t.reshape([-1, self.height, self.width, 3])
+\t\t)
+\t\tself.num_frames_read = min(14, len(self.video) - 1)
+'''
+    text, record_count = re.subn(
+        r"\n[ \t]*def record\(self, numframes\):\n"
+        r"[ \t]*\"\"\" Record a video, saving it to self\.video array for processing later \"\"\".*?"
+        r"\n[ \t]*def read\(self\):",
+        "\n" + record_replacement + "\n\tdef read(self):",
+        text,
+        count=1,
+        flags=re.S,
+    )
+    if record_count != 1:
+        raise SystemExit("Could not locate ffmpeg_reader record() method to patch.")
 
     marker = "self.num_frames_read = min(14, len(self.video) - 1)"
     if marker not in text:

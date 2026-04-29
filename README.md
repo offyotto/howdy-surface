@@ -16,6 +16,8 @@ Running it without arguments prints the full setup guide.
 - Detects the Surface IR camera with `v4l2-ctl`.
 - Configures Howdy to use `/dev/video*` IR capture through ffmpeg.
 - Applies the minimal Howdy ffmpeg recorder fixes needed for Surface IR warm-up.
+- Uses the system `ffmpeg` binary for the Howdy recorder path; no root `pip`
+  module install is required.
 - Configures PAM services such as `hyprlock` with backed-up edits.
 - Optionally registers a FIDO2/U2F authenticator through `pam-u2f`.
 - Offers a strong PAM profile: FIDO2 required, then Surface IR face auth or password.
@@ -105,4 +107,3 @@ home directory that has not been unlocked yet.
 - Yubico `pam-u2f`: https://developers.yubico.com/pam-u2f/
 - `pam_u2f` manual: https://developers.yubico.com/pam-u2f/Manuals/pam_u2f.8.html
 - MDN passkeys overview: https://developer.mozilla.org/en-US/docs/Web/Security/Authentication/Passkeys
-
